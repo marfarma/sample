@@ -1,5 +1,3 @@
-# Polyhedron.js
+# sample
 
-promised based, $digest aware, object persistence layer for angularjs apps using PouchDB
-
-## http://marfarma.viewdocs.io/Polyhedron.js
+sample code to replicate error messasge

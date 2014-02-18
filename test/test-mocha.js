@@ -1,37 +1,6 @@
 "use strict";
 
-var chai = require('chai'),
-   Q = global.Promise = require("q"),
-   //Q = Promise = global.Promise || require('bluebird'),
-   PouchDB = require('pouchdb'),
-   expect = chai.expect,
-   should = chai.should(),
-   chaiAsPromised = require('chai-as-promised'),
-   Polyhedron = require('../polyhedron.js'),
-   helper = require('./helper.js'),
-   exec = require('child_process').exec,
-   testUtils = require('./utils.js');
-   //platform    = require('platform'),
-
-// function cleanup() {
-//  // Remove test databases and test allDbs database.
-//   exec('rm -r ' + testsDir);
-// }
-// 
-// exec('mkdir -p ' + testsDir, function () {
-//   process.on('SIGINT', cleanup);
-//   process.on('exit', cleanup);
-// });
-
-
-require('mocha-as-promised')();
-chai.use(chaiAsPromised);
-
-if (Q) {
-  Q.longStackSupport = true;
-}
-
-// polyfill for phantomjs browser
+// polyfill for phantomjs is missing bind
 if (!Function.prototype.bind) {
   Function.prototype.bind = function (oThis) {
     if (typeof this !== "function") {
@@ -54,208 +23,122 @@ if (!Function.prototype.bind) {
   };
 }
 
+var chai = require('chai'),
+  chaiAsPromised = require('chai-as-promised'),
+  Q = require("q"),
+  PouchDB = require('pouchdb'),
+  should = chai.should(),
+  helper = require('./helper.js');
+
+chai.use(chaiAsPromised);  
+Q.longStackSupport = true;
+
+function Datastore(server) {
+  this.server = server;
+}
+
+Datastore.prototype.destroy = function (name) {
+  var deferred = Q.defer(); 
+  this.server.destroy(name, {}, function (err, db) {
+    if (err) {
+      if (err instanceof Error) {
+        deferred.reject(err);
+      } else if (err instanceof String) {
+        deferred.reject(new TypeError(err));
+      } else {
+        deferred.reject(err);
+      }
+    } else {
+      deferred.resolve(db);
+    }
+  });
+  this.db = deferred.promise;
+};
+
+Datastore.prototype.open = function (name) {
+  this.database = name;
+  
+  var deferred = Q.defer(); 
+  new this.server(this.database, {}, function (err, db) {
+    if (err) {
+      if (err instanceof Error) {
+        deferred.reject(err);
+      } else if (err instanceof String) {
+        deferred.reject(new TypeError(err));
+      } else {
+        deferred.reject(err);
+      }
+    } else {
+      deferred.resolve(db);
+    }
+  });
+  this.db = deferred.promise;
+};
+
 describe("Library Interface:", function () {
+  var Promise;
   
-  beforeEach(function () {
-     // TODO: try with the $q library
-    testUtils.cleanupTestDatabases();
-    Polyhedron.config.setQ(Q);
+  beforeEach(function (done) {
+    var deferred = Q.defer(); 
+    new PouchDB('testdb', {}, function (err, db) {
+      if (err) {
+        if (err instanceof Error) {
+          deferred.reject(err);
+        } else if (err instanceof String) {
+          deferred.reject(new TypeError(err));
+        } else {
+          deferred.reject(err);
+        }
+      } else {
+        deferred.resolve(db);
+      }
+    });
+    Promise = deferred.promise;
+    done();
   });
-  
-  describe("basic configuration:", function () {
     
-    it("should load", function () {      
-      Q.all([
-        Polyhedron.should.be.defined,
-        expect(typeof Polyhedron).to.equal('object')
-      ]);
-    });
-    
-    it("create database should return a promise", function () {
-      var db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      var throwaway = db.should.be.fullfilled;
-    });
-    
-    it("should create a database", function () {
-      var db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      db.should.eventually.be.an.instanceof(Polyhedron.Datastore);
-    });
-    
-    it("should create another database", function () {
-      var db, db2;
-      db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      db.then(function (data) {
-        db2 = new Polyhedron.Datastore(PouchDB, 'testDb2');
-        Q.all([
-          db2.should.eventually.have.property('server').that.equals(data.server),
-          db2.should.eventually.have.property('db').that.is.not.equal(data.db)
-        ]);
-      });
-    });   
-    it('should return existing database when called repeatedly', function () { 
-      var db, db2;
-      db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      db.then(function (data) {
-        db2 = new Polyhedron.Datastore(PouchDB, 'testDb');
-        Q.all([
-          db2.should.eventually.have.property('server').that.equals(data.server),
-          db2.should.eventually.have.property('db').that.equals(data.db)
-        ]);
-      });
-    });
-    it('should return a list of database on server', function () { 
-      var db, db2;
-      db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      db2 = new Polyhedron.Datastore(PouchDB, 'testDb2');
-      Q.all([
-        db,
-        db2
-      ]).then(function (data) {
-        var list = Polyhedron.Datastores(PouchDB);
-        list.should.have.members(['testDb', 'testDb2']);
-      });
-    });
-    // TODO: fix delete database support
-    it.skip('should delete a database', function () { 
-      var db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      db.then(
-        function (data) {
-          var promise = data.destroy().then(
-            function (info) {
-              if (typeof info !== 'undefined') { console.log(info); }
-              var list = Polyhedron.Datastores(PouchDB);
-              console.log(list);
-              //list.should.have.members(['testDb', 'testDb2']);
-            }, function (err) {
-              console.log(err);              
-            });
-          var throwaway = promise.should.be.fullfilled;
-          
-        });
-    });
+  it("should create a database", function (done) {
+    Promise.should.eventually.be.an.instanceof(PouchDB).notify(done);
   });
-  
-  describe("mapper tests:", function () {
-    var db;
-        
-    before(function (done) {
-      Polyhedron.config.setQ(Q);
-      db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      db.then(function (data) {
-        db = data;
-        done();
-      },
-      function (err) {
-        done();
-      });  
-    });
 
-    after(function (done) {
-      testUtils.cleanupTestDatabases();
-      done();
-    }); 
-           
-    it('should create a named mapper given a model', function () { 
-      var Foos = db.register('Foos', helper.FooModel);
-      var throwaway = Foos.should.be.fullfilled;
-    }); 
+  it("Datastore should create a database", function (done) {
+    var ds = new Datastore(PouchDB);
+    ds.open('testdb2');
+    ds.db.should.eventually.be.an.instanceof(PouchDB).notify(done);
+  });
+  
+  it("Datastore should delete a database", function (done) {
+    var ds = new Datastore(PouchDB);
+    ds.destroy('testdb2');
+    ds.db.should.be.fulfilled.and.notify(done);
+  });
 
-    it('should return existing mapper if model prototype is registered again', function () { 
-      var Foos1 = db.register('Foos', helper.FooModel);
-      var Foos2 = db.register('Foos', helper.FooModel);
-      Foos1.should.equal(Foos2);
+  it("should delete a database", function (done) {
+    var deferred2 = Q.defer(); 
+    
+    Promise
+    .then(function (ds) {
+      PouchDB.destroy('testdb', {}, function (err, info) {
+        if (err) {
+          if (err instanceof Error) {
+            deferred2.reject(err);
+          } else if (err instanceof String) {
+            deferred2.reject(new TypeError(err));
+          } else {
+            deferred2.reject(err);
+          }
+        } else {
+          deferred2.resolve(info);
+        }
+      });
+    },
+    function (reason) {
+      deferred2.reject(reason);
     });
     
-    it('should raise an error if registered is cheanged', function () { 
-      var Foos1 = db.register('Foos', helper.FooModel);
-      try {
-        db.register('Foos', helper.BarModel);
-      } catch (variable) {
-        variable.should.be.an.instanceOf(TypeError);
-      } 
-    });
-    
-    it('should return list of registered prototypes', function () { 
-      var Foos1 = db.register('Foos', helper.FooModel);
-      var Foos2 = db.register('Bars', helper.FooModel);
-      var list = db.registered();
-      list.should.have.members(['Foos', 'Bars']);
-    });
-    
-    it('should delete a named mapper', function () { 
-      var Foos1 = db.register('Foos', helper.FooModel);
-      var Foos2 = db.register('Bars', helper.FooModel);
-      db.deregister('Bars');
-      var list = db.registered();
-      list.should.have.members(['Foos']);
-    });
-    // it('', function () { });    
-    
+    var Promise2 = deferred2.promise;
+    Promise2.should.be.fulfilled.and.notify(done);
   });
-  
-  describe("model save tests:", function () {
-    var db;
-      
-    before(function (done) {
-      Polyhedron.config.setQ(Q);
-      db = new Polyhedron.Datastore(PouchDB, 'testDb');
-      db.then(function (data) {
-        db = data;
-        done();
-      },
-      function (err) {
-        done();
-      });  
-    });
 
-    after(function (done) {
-      testUtils.cleanupTestDatabases();
-      done();
-    }); 
-           
-    // var Users = db.doctype('Users');
-    // 
-    // newUser = Users.create({name: 'Ryan'});
-    // newUser._id // Some id set by /pouchDB/mongo
-    it('should create a new unsaved instance', function () { 
-      var Foos = db.register('Foos', helper.FooModel);
-      var foo = Foos.new();
-    }); 
-    
-      // define test models in helper  
-      // beforeEach(){} 
-      // var Users = db.doctype('Users',helper.FooModel);
-      // 
-    it('should create a new saved instance'); 
-    it('should add a non-enumerable property with internal tracking values');
-      // var Users = db.doctype('Users');
-      // 
-      // newUser = Users.new({name: 'Ryan'});
-      // newUser._id // Undefined
-    it('should retain behavior after object is saved and restored');
-    it('should restore model data recursively including array and object properties');
-    it('should return an error on missing or undefined object');
-    it('should return an error if passed object of wrong type');
-  });
-  
-  describe("model primary key tests:", function () {
-    // it('', function () { 
-    // });    
-    it('should respect unique primary key declaration');
-    it('should not save a new object with a duplicate primary key');
-    it('should save an object with a duplicate primary key if model differs');
-    
-  });
-  
-  describe("util functions:", function () {
-    it('should have a toJson method that excludes internal properties');
-    it('should report saved=true status if saved');
-    it('saved should become false if object is "dirty"');
-    it('should report saved=false status if not saved');
-  });
-  
-  // users = Users.find({}, {sort: ['createdAt', -1], limit: 10});
-  // mattCount = User.count({name: 'Matthew'});
-  // mattCount == 1; // true
   
 });
