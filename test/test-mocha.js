@@ -1,28 +1,5 @@
 "use strict";
 
-// polyfill for phantomjs is missing bind
-if (!Function.prototype.bind) {
-  Function.prototype.bind = function (oThis) {
-    if (typeof this !== "function") {
-      // closest thing possible to the ECMAScript 5 internal IsCallable function
-      throw new TypeError("Function.prototype.bind - what is trying to be bound is not callable");
-    }
-
-    var aArgs = Array.prototype.slice.call(arguments, 1), 
-        fToBind = this, 
-        fNOP = function () {},
-        fBound = function () {
-          return fToBind.apply(this instanceof fNOP && oThis ? this: oThis,
-                               aArgs.concat(Array.prototype.slice.call(arguments)));
-        };
-
-    fNOP.prototype = this.prototype;
-    fBound.prototype = new fNOP();
-
-    return fBound;
-  };
-}
-
 var chai = require('chai'),
   chaiAsPromised = require('chai-as-promised'),
   Q = require("q"),
@@ -33,13 +10,13 @@ var chai = require('chai'),
 chai.use(chaiAsPromised);  
 Q.longStackSupport = true;
 
-function Datastore(server) {
-  this.server = server;
-}
+// ============================ PouchAPI =====================
+require('pouchdb');
+function PouchAPI() {}
 
-Datastore.prototype.destroy = function (name) {
+PouchAPI.prototype.open = function (database) {
   var deferred = Q.defer(); 
-  this.server.destroy(name, {}, function (err, db) {
+  new PouchDB(this.database, {}, function (err, db) {
     if (err) {
       if (err instanceof Error) {
         deferred.reject(err);
@@ -52,93 +29,94 @@ Datastore.prototype.destroy = function (name) {
       deferred.resolve(db);
     }
   });
-  this.db = deferred.promise;
+  return deferred.promise;
+};
+
+PouchAPI.prototype.destroy = function (database, db) {
+  var deferred = Q.defer(); 
+  this.server.destroy(this.database, {}, function (err, db) {
+    if (err) {
+      if (err instanceof Error) {
+        deferred.reject(err);
+      } else if (err instanceof String) {
+        deferred.reject(new TypeError(err));
+      } else {
+        deferred.reject(err);
+      }
+    } else {
+      deferred.resolve(db);
+    }
+  });
+  return deferred.promise;
+};
+
+exports = PouchAPI;
+// ============================ PouchAPI =====================
+
+
+// ============================ Datastore =====================
+function Datastore(config) {
+  this.config = { // user string server to lookup driver in server object (di)?
+                database: "database",
+                server: new Polyhedron.server.PouchAPI(),
+                // server: new Polyhedron.server.DropboxAPI(),
+              }
+  this.database = config.database;
+  this.server = config.server;
+  if (this.database && this.database.length > 0) {
+    this.db = this.server.open(this.database);
+  }
+}
+
+Datastore.prototype.destroy = function () {
+  // destroy this.database
+
+  // calls api.destroy, which returns a promise
+  // deleteDatastore(datastoreId, callback)
+  
+  this.db =  this.server.destroy(this.database, this.db); 
+  return this.db;
 };
 
 Datastore.prototype.open = function (name) {
   this.database = name;
-  
-  var deferred = Q.defer(); 
-  new this.server(this.database, {}, function (err, db) {
-    if (err) {
-      if (err instanceof Error) {
-        deferred.reject(err);
-      } else if (err instanceof String) {
-        deferred.reject(new TypeError(err));
-      } else {
-        deferred.reject(err);
-      }
-    } else {
-      deferred.resolve(db);
-    }
-  });
-  this.db = deferred.promise;
+  // open does an automatic create if necessary
+    
+  // calls api.open, which returns a promise
+  // createDatastore(callback)
+  // openDatastore(datastoreId, callback)
+
+  this.db = this.server.open(this.database); 
+  return this.db;
+
 };
+// ============================ Datastore =====================
+
 
 describe("Library Interface:", function () {
-  var Promise;
   
-  beforeEach(function (done) {
-    var deferred = Q.defer(); 
-    new PouchDB('testdb', {}, function (err, db) {
-      if (err) {
-        if (err instanceof Error) {
-          deferred.reject(err);
-        } else if (err instanceof String) {
-          deferred.reject(new TypeError(err));
-        } else {
-          deferred.reject(err);
-        }
-      } else {
-        deferred.resolve(db);
-      }
-    });
-    Promise = deferred.promise;
-    done();
-  });
-    
-  it("should create a database", function (done) {
-    Promise.should.eventually.be.an.instanceof(PouchDB).notify(done);
-  });
-
-  it("Datastore should create a database", function (done) {
-    var ds = new Datastore(PouchDB);
-    ds.open('testdb2');
+  it("PouchDB Datastore should create a database", function (done) {
+    var ds = new Datastore({database:'testdb2', server: PouchAPI});
+    //ds.open('testdb2'); // default open on new 
     ds.db.should.eventually.be.an.instanceof(PouchDB).notify(done);
   });
   
-  it("Datastore should delete a database", function (done) {
-    var ds = new Datastore(PouchDB);
-    ds.destroy('testdb2');
+  it("Dropbox Datastore should create a database", function (done) {
+    var ds = new Datastore({database:'testdb2', server: DropboxAPI});
+    //ds.open('testdb2'); // default open on new 
+    ds.db.should.eventually.be.an.instanceof(PouchDB).notify(done);
+  });
+  
+  it("PouchDB Datastore should delete a database", function (done) {
+    var ds = new Datastore({database:'testdb2', server: PouchAPI});
+    ds.destroy();
     ds.db.should.be.fulfilled.and.notify(done);
   });
-
-  it("should delete a database", function (done) {
-    var deferred2 = Q.defer(); 
     
-    Promise
-    .then(function (ds) {
-      PouchDB.destroy('testdb', {}, function (err, info) {
-        if (err) {
-          if (err instanceof Error) {
-            deferred2.reject(err);
-          } else if (err instanceof String) {
-            deferred2.reject(new TypeError(err));
-          } else {
-            deferred2.reject(err);
-          }
-        } else {
-          deferred2.resolve(info);
-        }
-      });
-    },
-    function (reason) {
-      deferred2.reject(reason);
-    });
-    
-    var Promise2 = deferred2.promise;
-    Promise2.should.be.fulfilled.and.notify(done);
+  it("Dropbox Datastore should delete a database", function (done) {
+    var ds = new Datastore({database:'testdb2', server: DropboxAPI});
+    ds.destroy();
+    ds.db.should.be.fulfilled.and.notify(done);
   });
-
   
 });
