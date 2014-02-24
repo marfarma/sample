@@ -5,7 +5,7 @@
   "main": "sample.js",
   "scripts": {
     "test": "jshint -c .jshintrc test/test-mocha.js && testem -g",
-    "build": "mkdir -p dist && browserify sample.js -o dist/sample.js -s Sample",
+    "build": "mkdir -p dist && browserify index.js -o dist/lib.js -s PLH",
     "install": "napa"
   },
   "napa": {
@@ -30,16 +30,29 @@
   },
   "devDependencies": {
     "napa": "~0.3.0",
-    "q": "~0.9.7",
     "chai": "~1.8.1",
     "mocha": "~1.16.2",
     "jshint": "~2.3.0",
     "requirejs": "~2.1.10",
     "browserify": "~3.24.13",
     "browserify-shim": "~3.2.2",
-    "mocha-phantomjs": "~3.3.1",
-    "when": "~2.8.0",
     "chai-as-promised": "~4.1.0",
     "mocha-server": "~0.2.0"
+  },
+  "dependencies": {
+    "underscore": "~1.4.4",
+    "binary-search-tree": "0.2.3",
+    "simple-errors": "0.0.4",
+    "bluebird": "~1.0.5",
+    "lie": "~2.5.2",
+    "util": "~0.10.3",
+    "inherits": "~2.0.1",
+    "pouchdb-collate": "~1.0.0"
+  },
+  "browser": {
+    "path": false,
+    "fs": false,
+    "events": false,
+    "bluebird": "lie"
   }
 }
