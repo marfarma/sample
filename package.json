@@ -47,7 +47,8 @@
     "lie": "~2.5.2",
     "util": "~0.10.3",
     "inherits": "~2.0.1",
-    "pouchdb-collate": "~1.0.0"
+    "pouchdb-collate": "~1.0.0",
+    "circuitbox": "~1.0.2"
   },
   "browser": {
     "path": false,

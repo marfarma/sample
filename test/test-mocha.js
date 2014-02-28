@@ -2,13 +2,50 @@
 
 var chai = require('chai'),
   chaiAsPromised = require('chai-as-promised'),
-  PLH = require("../lib/polyhedron.js"),
+  PLH = require('../lib/polyhedron.js'),
   PouchDB = require('pouchdb'),
   should = chai.should(),
-  helper = require('./helper.js')
+  helper = require('./helper.js'),
+  circuitbox = require('circuitbox')
   ;
 
-chai.use(chaiAsPromised);  
+chai.use(chaiAsPromised);
+
+var apis = {
+  pouchdb: require('../lib/servers/pouchapi.js')
+}; 
+
+// deps.apis
+// deps.Index
+// deps.Datastore
+circuitbox.create({
+  modules: [
+    function (registry) {
+      registry.for('apis').use(apis);
+
+      registry.for('Index').require('./index.js');
+        //.dependsOn('message');
+
+      //registry.for('Datastore').use(PLH.Datastore);
+        
+      registry.for('PLH').use(PLH.Datastore);
+        .dependsOn('apis')
+        .dependsOn('Index')
+        //.dependsOn('Datastore')
+        ;
+    }
+  ]
+}).done(function (cbx) {
+  cbx.get('PLH').done(function (plh) {
+    PLH = plh;
+  }, function (err) {
+    console.log('Could not load library');
+    return;
+  });
+
+}, function (err) {
+  console.log('Could not create circuitbox');
+}); 
 
 describe("Library Interface:", function () {
 
@@ -54,20 +91,21 @@ describe("Library Interface:", function () {
 });
 
 describe("Datastore", function () {
-  var ds;
+  var store;
   
   beforeEach(function (done) {
-    ds = PLH.datastore({database: 'testdb2', server: 'pouchdb'})
+    var ds = PLH.datastore({database: 'testdb2', server: 'pouchdb'})
          .then(function (data) {
-           console.log(data);
+            console.log(data);
+            store = data;
             return data;
-         })
+          })
          .then(function (data) {
             done();
-         })
+          })
          .catch(function (reason) {
-           done(reason);
-         });  
+            done(reason);
+          });  
   });
 
   afterEach(function (done) {
@@ -75,8 +113,8 @@ describe("Datastore", function () {
     done();
   }); 
   
-  it("should be an instance of PLH.Datastore", function (done) {
-    ds.should.eventually.be.an.instanceof(PLH.Datastore).notify(done);
+  it("should be an instance of PLH.Datastore", function () {
+    store.should.be.an.instanceof(PLH.Datastore);
   });
 
 });
