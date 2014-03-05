@@ -1,0 +1,289 @@
+Mapper Creation Constraints
+  - model must specify a unique key 
+  - create datastoreManager for mapper
+  - add default in-memory Datastore to datastoreManager
+  - create pending operations queue for mapper
+
+Mapper.DatastoreManager(deps)
+
+Describe DatastoreMangager
+var sut;
+
+beforeEach
+  sut = new DatastoreManager()
+
+// Proposed, the datastoreManager item is:
+//
+// {
+//   "datastore": dataStore, 
+//   "write": writeRule, // include write retry properties
+//   "read": readRule    // include read retry properties
+// }
+
+var mockData = [ 
+  "datastore": datastore,
+  "write": {"target": "true", "blocking": "true", "writeOrder": "1",  "writeBack": "true"},
+  "read": {"target": "true", "order": "0"}
+},
+{
+  "datastore": datastore,
+  "write": {"target": "true", "blocking": "false", "writeOrder": "2",  "writeBack": "false"},
+  "read": {"target": "true", "order": "1"}
+},
+{
+  "datastore": datastore,
+  "write": {"target": "false", "blocking": "false", "writeOrder": "3",  "writeBack":  "false"},
+  "read": {"target": "true", "order": "2"}
+},
+{
+  "datastore": datastore,
+  "write": {"target": "true", "blocking": "false", "writeOrder": "2",  "writeBack": "false"},
+  "read": {"target": "false", "order": "3"}
+}];
+
+//
+// which automatically enforces certain constraints on rule
+// existence. 
+
+
+Describe New
+  it should have a length == 1
+  it should contain an item with key='identityMap'
+  it should have one writable item
+  it should have one readable item
+  it should have method add
+  it should have method get
+  it should have method list
+  it should have method delete
+
+Describe Add
+  before
+    add a new item
+
+  it should add a new item
+    expect length == 2
+
+  it should reject duplicate item
+    add identical new item should be rejected
+
+  it should reject as invalid when server api not found
+    add of invalid new item should be rejected
+
+  it should reject as invalid when config data is invalid for serverApi
+    add of invalid new item should be rejected
+
+  it should reject as invalid when model format is invalid for serverApi
+    add of invalid new item should be rejected
+
+Describe Get
+  before
+    add a new item
+
+  it should return requested item if found
+
+  it should return undefined if not found
+
+Describe List
+
+  it should return an array
+
+  it should return an array that contains key == 'identityMap'
+
+Describe Delete
+
+  it should reject delete of item with key == 'identityMap'
+
+  it should delete an item 
+
+  it should reject delete of item with pending operations
+
+  it should raise a datastore deletion event  //(for which IdentityMap, OperationsQueue should listen and clean up orphan data, and emit consumer event)
+
+Describe Rules Management (Includes read, write and retry rules)
+
+  // get (all writable stores)
+  // get (primary writable stores)
+  // get (readable store iterator)
+  // get (non-writable stores)
+  // get (non-readable stores)
+  // set (key, rule, config)
+
+  it should have write rule
+
+  it should have read rule
+
+  it should override with rules from config
+
+  it should respect serverAPI defaults rules
+
+  it should respect rules from config over serverAPI defaults
+
+  it should move primary write status to next writable item after delete
+
+  it should require unique order for read rules
+
+  it should not require unique order for write rules
+
+  - list = {};
+  - mapper.datastoreManager.add = function ('apiName',config) {
+       if exists return;
+       create deferred
+       specified serverApi must be found, otherwise reject promise
+       serverApi must validate config and model properties, otherwise reject promise
+       key = serverApi.key(config);
+       serverApi.open(config).then((function (db) {
+         this.db = db;
+         if (config.rules) {
+           insert config.rules
+         }
+         return {// rule };  
+       }).bind(this)).catch(function (reason) {
+         if (list[key]) {
+           remove list[key];
+         }
+         deferred.reject(reason);
+       });
+       list[key] = deferred.promise;
+       return deferred.promise;
+    }
+Mapper.datastoreManager.remove = function (key) {
+        if (pendingQueue.get(key).length > 0) {
+          if ( not all settled ) {
+            reject promise;
+          }
+        } else {
+          pendingQueue.remove(key).then(
+          remove identityMap datastore references
+          remove rulesManager datastore references
+          remove list[key]
+          fullfill promise("ok");
+        }
+        return promise;
+    }
+Mapper.datastoreManager.list = ordered array of keys -- depends on rulesManager
+Mapper.datastoreManager.get(key) = if found resolve promise to datastore else reject promise.  return promise;
+
+Identity Map the â€˜in-memoryâ€™ database for model
+  Event emitter - publish collection and object change events for client-application consumption
+  https://github.com/WebReflection/eddy
+
+  // ObjectObserver: https://github.com/Polymer/observe-js
+  // Call the event emitter in the change callback
+
+  {
+    // Begins observation. Value changes will be reported by invoking |changeFn| with |opt_receiver| as 
+    // the target, if provided. Returns the initial value of the observation.
+    open: function(changeFn, opt_receiver) {}, // initial or post save (close / open)
+
+    // Report any changes now (does nothing if there are no changes to report).
+    deliver: function() {} // dirty check --> isSaved is false if the provided function is called
+
+    // If there are changes to report, ignore them. Returns the current value of the observation.
+    discardChanges: function() {},
+
+    // Ends observation. Frees resources and drops references to observed objects.
+    close: function() {}, // save promise returns fullfilled
+  }
+
+  // ObjectObserver observes the set of own-properties of an object and their values.
+
+  var myObj = { id: 1, foo: 'bar' };
+  var observer = new ObjectObserver(myObj);
+  observer.open(function(added, removed, changed, getOldValueFn) {
+    // respond to changes to the obj.
+    Object.keys(added).forEach(function(property) {
+      property; // a property which has been been added to obj
+      added[property]; // its value
+    });
+    Object.keys(removed).forEach(function(property) {
+      property; // a property which has been been removed from obj
+      getOldValueFn(property); // its old value
+    });
+    Object.keys(changed).forEach(function(property) {
+      property; // a property on obj which has changed value.
+      changed[property]; // its value
+      getOldValueFn(property); // its old value
+    });
+  });
+
+Datastore Manager - the set of participating object stores for the type. Includes at minimum an â€˜in-memoryâ€™ Datastore ( i.e. the identity-map). Depends on:
+
+ObjectFactory: create, new, serialize and re-hydrate objects. Depends on:
+  Aspect Manager - manage and apply model advice queues (i.e. pre-delete, post-delete, around-delete, etc., see:   https://github.com/cujojs/meld)
+  Validations Manager - parse declarative validation rules and run checks before save, update operations. Potential dependency on:
+  get(rulesManager, 'get').then().catch(get(rulesManager,'get', true) // manage the get process selecting datastore according to rule
+  save // insert operation and related promises into operationsQueue
+  ServerApi - platform dependent actions required to persist documents to a particular server platform 
+    Event Bus: broadcast and consume cross mapper alerts, i.e. a database or server close event, for connection-based servers.
+
+Retry Manager - trigger operation retries. Depends on:
+  Operations Queue Manager operation details and their promises are inserted into the queue.
+  Rules Manager: applicable sync rules
+
+SPA Helper (Initially Angular specific)
+  Service provider: return a service provider base class or mixin for the model.
+
+  // respond to an external event and update $scope object example
+  // http://stackoverflow.com/questions/10490570/call-angular-js-from-legacy-code
+  ws.onmessage = function (evt) {
+      dictt = JSON.parse(evt.data)
+      angular.element(document.getElementById('control-panel')).scope().$apply(function(scope){
+          scope.filters = dictt.filters;
+      });
+  };
+
+  angular.element(domElement).scope() to get the current scope for the element
+  angular.element(domElement).injector() to get the current app injector
+  angular.element(domElement).controller() to get a hold of the ng-controller instance.
+
+  From the injector you can get a hold of any service in angular application. 
+  Similarly from the scope you can invoke any methods which have been published to it.
+
+  Controller helper provider: given a scope object, return a controller helper for model
+    Typical CRUD operations
+    Listen to collection changes when browsing list
+    Listen to object changes when editing / viewing objects, including each object in list
+Example for sorting arrays
+
+    // array sort example
+    cars = [
+        {
+            name: "Honda",
+            speed: 80
+        },
+
+        {
+            name: "BMW",
+            speed: 180
+        },
+
+        {
+            name: "Trabi",
+            speed: 40
+        },
+
+        {
+            name: "Ferrari",
+            speed: 200
+        }
+    ]
+
+
+    cars.sort(function(a, b) { 
+        return a.speed - b.speed;
+    })
+
+    for(var i in cars)
+        document.writeln(cars[i].name) // Trabi Honda BMW Ferrari 
+Iterate example (for read attempt ordering) sort by read priority, filter by readable,
+
+var langs = ['JavaScript', 'Python', 'C++'];
+var it = Iterator(langs);
+for (var pair in it)
+  print(pair); // prints each [index, value] pair in turn
+
+// alternately, use next() syntax
+
+var pair = it.next(); // returns next [index, value] pair in turn
+pair = it.next(); 
+pair = it.next(); // until read past end and a StopIteration exception is thrown 
